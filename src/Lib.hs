@@ -20,10 +20,11 @@ import Text.Blaze.Html5 (Html, (!), a, form, input, p, toHtml, label, textarea)
 import Text.Blaze.Html5.Attributes (action, enctype, href, name, size, type_, value)
 import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as A
-import Data.String (fromString, IsString)
+import Data.String (fromString, IsString, String)
 import System.Timeout
 import System.Process (readProcessWithExitCode, callProcess)
 import System.Exit (ExitCode(ExitSuccess, ExitFailure))
+import System.Directory (doesFileExist)
 
 someFunc :: IO ()
 someFunc = putStrLn "someFunc"
@@ -34,12 +35,15 @@ serveFlat = serveDirectory DisableBrowsing []
 editFileView :: ServerPartT IO Response
 editFileView = do ident <- sanitize <$> lookRaw "ident"
                   let path = makePath Tex ident
-                  liftIO $ appendFile (fromPath path) ""
-                  body <- liftIO $ readFile $ fromPath path
-                  ok $ template "form" $
-                            form ! action (fromString ("/edit/?ident=" ++ fromSane ident)) ! enctype "multipart/form-data" ! A.method "POST" $ do
-                                textarea ! type_ "text" ! A.id "body" ! name "body"  $ toHtml body
-                                input ! type_ "submit" ! value "Submit"
+                  exists <- liftIO $ setup ident
+                  if exists
+                    then ok $ template "form" $ toHtml ("File existed already!" :: Text)
+                    else do
+                        body <- liftIO $ readFile $ fromPath path
+                        ok $ template "form" $
+                                    form ! action (fromString ("/edit/?ident=" ++ fromSane ident)) ! enctype "multipart/form-data" ! A.method "POST" $ do
+                                    textarea ! type_ "text" ! A.id "body" ! name "body"  $ toHtml body
+                                    input ! type_ "submit" ! value "Submit"
 
 editFileSubmit :: ServerPartT IO Response
 editFileSubmit = do method POST
@@ -48,8 +52,30 @@ editFileSubmit = do method POST
                     body <- lookText "body"
                     liftIO $ writeFile (fromPath path) body
                     result <- texToSvg ident
-                    ok $ template "result" $ toHtml $ (show result)         
-                
+                    case result of
+                        Compiled -> seeOther ("/view/" ++ fromPath (makePath Svg ident)) $ toResponse ()
+                        Failed str -> ok $ template "failed" $
+                                                a ! A.href (fromString $ "/form?ident=" ++ fromSane ident) $ 
+                                                        "Compilation failed - click here to edit your file"
+
+setup :: SaneString -> IO Bool -- return: did file exist already?
+setup ident = do
+    figExists <- doesFileExist $ fromPath $ makePath Svg ident
+    texExists <- doesFileExist $ fromPath $ makePath Tex ident
+    if figExists
+        then return True
+        else if texExists
+            then return False
+            else appendFile (fromPath $ makePath Tex ident) stdBody >> return False
+
+stdBody = "\\documentclass{article}\n\
+        \\\usepackage{tikz}\n\
+        \\\usepackage{tikz-cd}\n\
+        \\\begin{document}\n\
+        \\n\
+        \\\end{document}"
+
+
 dumbServe :: ServerPartT IO Response
 dumbServe = ok $ toResponse $ toHtml ("FoobarBaz" :: Text)
 
@@ -104,6 +130,7 @@ newtype SaneString = Sane {fromSane :: String} deriving IsString -- only alphanu
 newtype SanePath = Path {fromPath :: String} deriving IsString
 data Extension = Tex | Svg | Dvi
 data Status = Compiled | Failed String deriving Show
+
 
 sanitize :: RawString -> SaneString
 sanitize = Sane . filter (\x -> isDigit x || isLetter x) . fromRaw
