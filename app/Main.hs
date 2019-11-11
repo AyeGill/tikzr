@@ -1,6 +1,6 @@
 module Main where
 
-import Lib (dumbServe, editFileView, editFileSubmit, serveFlat)
+import Lib (home, dumbServe, editFileView, editFileSubmit, serveFlat)
 import Happstack.Server
 
 import Control.Monad (msum)
@@ -14,4 +14,5 @@ main = simpleHTTP nullConf $ do
           dir "test" $ dumbServe
         , dir "form" $ editFileView
         , dir "edit" $ editFileSubmit
-        , dir "view" $ serveFlat "."]
+        , dir "view" $ serveFlat "."
+        , home]

@@ -2,9 +2,11 @@
 
 A super simple web application for hosting `tex`-based diagrams.
 
-- Go to `/form?ident=<name>` to edit the diagram with name `<name>`, or create it.
+- Go to `/form?ident=<name>` to create a diagram with name `<name>`
 - Names can consist only of alphanumerical characters.
 - The result of compiling with `luatex` and `dvisvgm` is visible at `/view/<name>.svg`.
+- There's a link on `/` to create a randomly-named diagram.
+    - There's a tiny risk of collisions, which I deal with by ignoring it. Just reload `/` and generate a new one.
 
 ## Caution
 

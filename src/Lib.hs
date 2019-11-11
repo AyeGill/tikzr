@@ -6,6 +6,7 @@ module Lib
     , editFileSubmit
     , dumbServe
     , serveFlat
+    , home
     ) where
 
 import qualified Data.Text.Lazy as T
@@ -14,6 +15,7 @@ import Data.Text.Lazy.IO (readFile, writeFile)
 import Data.Char (isDigit, isLetter)
 import Prelude hiding (readFile, writeFile)
 import Control.Monad.IO.Class (liftIO)
+import Control.Applicative (many)
 import Happstack.Server hiding (timeout)
 import Data.Foldable (asum)
 import Text.Blaze.Html5 (Html, (!), a, form, input, p, toHtml, label, textarea)
@@ -25,12 +27,21 @@ import System.Timeout
 import System.Process (readProcessWithExitCode, callProcess)
 import System.Exit (ExitCode(ExitSuccess, ExitFailure))
 import System.Directory (doesFileExist)
+import System.Random
+
 
 someFunc :: IO ()
 someFunc = putStrLn "someFunc"
 
 serveFlat :: FilePath -> ServerPartT IO Response
 serveFlat = serveDirectory DisableBrowsing []
+
+home :: ServerPartT IO Response
+home = do
+    str <- liftIO randomString
+    ok $ template "tikzr" $
+        a ! A.href (fromString $ "/form?ident=" ++ fromSane str) $ 
+            "New diagram"
 
 editFileView :: ServerPartT IO Response
 editFileView = do ident <- sanitize <$> lookRaw "ident"
@@ -42,7 +53,8 @@ editFileView = do ident <- sanitize <$> lookRaw "ident"
                         body <- liftIO $ readFile $ fromPath path
                         ok $ template "form" $
                                     form ! action (fromString ("/edit/?ident=" ++ fromSane ident)) ! enctype "multipart/form-data" ! A.method "POST" $ do
-                                    textarea ! type_ "text" ! A.id "body" ! name "body"  $ toHtml body
+                                    textarea ! type_ "text" ! A.id "body" ! name "body"
+                                             ! A.cols "80" ! A.rows "40" $ toHtml body
                                     input ! type_ "submit" ! value "Submit"
 
 editFileSubmit :: ServerPartT IO Response
@@ -69,9 +81,9 @@ setup ident = do
             else appendFile (fromPath $ makePath Tex ident) stdBody >> return False
 
 stdBody = "\\documentclass{article}\n\
-        \\\usepackage{tikz}\n\
-        \\\usepackage{tikz-cd}\n\
+        \\\usepackage{amsmath,amssymb,bm,tikz,tikz-cd}\n\
         \\\begin{document}\n\
+        \\\thispagestyle{empty}\n\
         \\n\
         \\\end{document}"
 
@@ -114,15 +126,13 @@ dviToSvg :: SaneString -> IO Status
 dviToSvg ident = do
     let dviPath = makePath Dvi ident
     let command = "dvisvgm"
-    let args = ["--no-fonts", fromPath dviPath]
+    let args = ["--no-fonts", "--exact", fromPath dviPath]
     result <- timeout 1000000 $ readProcessWithExitCode command args ""
     case result of
         Nothing -> return $ Failed "dvisvgm process timed out!"
         Just (ExitSuccess, _, _) -> return Compiled
         Just (ExitFailure n, _, stderr) -> return $ Failed 
             $ "dvisvgm failed with code " ++ show n ++ "stderr: " ++ stderr
-
-
 
 
 newtype RawString = Raw {fromRaw :: String} deriving IsString --input
@@ -141,3 +151,20 @@ makePath Svg = Path . (++".svg") . fromSane
 makePath Dvi = Path . (++".dvi") . fromSane
 
 lookRaw name = Raw . T.unpack <$> lookText name
+
+randomChar :: IO Char
+randomChar = randomRIO ('a', 'z')
+
+randomString :: IO SaneString
+randomString = do
+    let len = 30
+    str <- repeatM 30 randomChar
+    return $ Sane str
+
+repeatM :: Int -> IO a -> IO [a]
+repeatM 0 _ = return []
+repeatM n act | n > 0 = do
+    tl <- repeatM (n-1) act
+    hd <- act
+    return (hd:tl)
+repeatM _ _ = return []
