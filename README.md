@@ -2,6 +2,14 @@
 
 A super simple web application for hosting `tex`-based diagrams.
 
+## Installation
+
+- Build using [stack](haskellstack.org) - `stack build` / `stack install` should world out of the box.
+- Requires `lualatex` and `dvisvgm` on your path to work.
+
+## Usage
+
+- The executable `tikzr-exe` serves the application on port 8000.
 - Go to `/form?ident=<name>` to edit the diagram with name `<name>`, or create it.
 - Names can consist only of alphanumerical characters.
 - The result of compiling with `luatex` and `dvisvgm` is visible at `/view/<name>.svg`.
